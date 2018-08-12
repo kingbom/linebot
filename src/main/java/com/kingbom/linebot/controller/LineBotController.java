@@ -1,27 +1,35 @@
 package com.kingbom.linebot.controller;
 
+import com.google.common.io.ByteStreams;
+import com.kingbom.linebot.LinebotApplication;
 import com.linecorp.bot.client.LineMessagingClient;
+import com.linecorp.bot.client.MessageContentResponse;
 import com.linecorp.bot.model.ReplyMessage;
 import com.linecorp.bot.model.event.Event;
 import com.linecorp.bot.model.event.MessageEvent;
+import com.linecorp.bot.model.event.message.ImageMessageContent;
 import com.linecorp.bot.model.event.message.LocationMessageContent;
 import com.linecorp.bot.model.event.message.StickerMessageContent;
 import com.linecorp.bot.model.event.message.TextMessageContent;
-import com.linecorp.bot.model.message.LocationMessage;
-import com.linecorp.bot.model.message.Message;
-import com.linecorp.bot.model.message.StickerMessage;
-import com.linecorp.bot.model.message.TextMessage;
-
+import com.linecorp.bot.model.message.*;
 import com.linecorp.bot.model.profile.UserProfileResponse;
 import com.linecorp.bot.spring.boot.annotation.EventMapping;
 import com.linecorp.bot.spring.boot.annotation.LineMessageHandler;
 import lombok.NonNull;
+import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 
 /**
@@ -44,29 +52,6 @@ public class LineBotController {
         handleTextContent(event.getReplyToken(), event, message);
     }
 
-    private void handleTextContent(String replyToken, Event event, TextMessageContent content) {
-        String text = content.getText().toLowerCase();
-        switch (text) {
-            case "profile": {
-                String userId = event.getSource().getUserId();
-                if(userId != null) {
-                    lineMessagingClient.getProfile(userId).whenComplete((profile, throwable) -> {
-                                if(throwable != null) {
-                                    this.replyText(replyToken, throwable.getMessage());
-                                    return;
-                                }
-                                String profileInfo = getProfileInfo(profile);
-                                this.reply(replyToken, Arrays.asList(new TextMessage(profileInfo)));
-                    });
-                }
-                break;
-            }
-            default:
-                log.info("Return echo message %s : %s", replyToken, text);
-                this.replyText(replyToken, text);
-        }
-    }
-
     @EventMapping
     public void handleStickerMessage(MessageEvent<StickerMessageContent> event) {
         log.info(event.toString());
@@ -84,6 +69,101 @@ public class LineBotController {
                 message.getLatitude(),
                 message.getLongitude()
         ));
+    }
+
+    @EventMapping
+    public void handleImageMessage(MessageEvent<ImageMessageContent> event) {
+        log.info(event.toString());
+        ImageMessageContent content = event.getMessage();
+        String replyToken = event.getReplyToken();
+
+        try {
+            MessageContentResponse response = lineMessagingClient.getMessageContent(content.getId()).get();
+            DownloadedContent jpg = saveContent("jpg", response);
+            DownloadedContent previewImage = createTempFile("jpg");
+
+            system("convert", "-resize", "240x", jpg.path.toString(), previewImage.path.toString());
+
+            reply(replyToken, new ImageMessage(jpg.getUri(), previewImage.getUri()));
+
+        } catch (InterruptedException | ExecutionException e) {
+            reply(replyToken, new TextMessage("Cannot get image: " + content));
+            throw new RuntimeException(e);
+        }
+
+    }
+
+
+    private void handleTextContent(String replyToken, Event event, TextMessageContent content) {
+        String text = content.getText().toLowerCase();
+        switch (text) {
+            case "profile": {
+                String userId = event.getSource().getUserId();
+                if(userId != null) {
+                    lineMessagingClient.getProfile(userId).whenComplete((profile, throwable) -> {
+                        if(throwable != null) {
+                            this.replyText(replyToken, throwable.getMessage());
+                            return;
+                        }
+                        String profileInfo = getProfileInfo(profile);
+                        this.reply(replyToken, Arrays.asList(new TextMessage(profileInfo)));
+                    });
+                }
+                break;
+            }
+            default:
+                log.info("Return echo message %s : %s", replyToken, text);
+                this.replyText(replyToken, text);
+        }
+    }
+
+    private void system(String... args) {
+        ProcessBuilder processBuilder = new ProcessBuilder(args);
+        try {
+            Process start = processBuilder.start();
+            int i = start.waitFor();
+            log.info("result: {} => {}", Arrays.toString(args), i);
+        } catch (InterruptedException e) {
+            log.info("Interrupted", e);
+            Thread.currentThread().interrupt();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    private static DownloadedContent saveContent(String ext,
+                                                 MessageContentResponse response) {
+        log.info("Content-type: {}", response);
+        DownloadedContent tempFile = createTempFile(ext);
+        try (OutputStream outputStream = Files.newOutputStream(tempFile.path)) {
+            ByteStreams.copy(response.getStream(), outputStream);
+            log.info("Save {}: {}", ext, tempFile);
+            return tempFile;
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    private static DownloadedContent createTempFile(String ext) {
+        String fileName = LocalDateTime.now() + "-"
+                + UUID.randomUUID().toString()
+                + "." + ext;
+        Path tempFile = LinebotApplication.downloadedContentDir.resolve(fileName);
+        tempFile.toFile().deleteOnExit();
+        return new DownloadedContent(tempFile,
+                createUri("/downloaded/" + tempFile.getFileName()));
+
+    }
+
+    private static String createUri(String path) {
+        return ServletUriComponentsBuilder.fromCurrentContextPath()
+                .path(path).toUriString();
+    }
+
+    @Value
+    public static class DownloadedContent {
+        Path path;
+        String uri;
     }
 
     private String getProfileInfo(UserProfileResponse profile) {
