@@ -11,7 +11,6 @@ import com.linecorp.bot.spring.boot.annotation.EventMapping;
 import com.linecorp.bot.spring.boot.annotation.LineMessageHandler;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -25,8 +24,11 @@ import java.util.concurrent.ExecutionException;
 @LineMessageHandler
 public class LineBotController {
 
-    @Autowired
-    private LineMessagingClient lineMessagingClient;
+    private final LineMessagingClient lineMessagingClient;
+
+    public LineBotController(LineMessagingClient lineMessagingClient) {
+        this.lineMessagingClient = lineMessagingClient;
+    }
 
     @EventMapping
     public void handleTextMessage(MessageEvent<TextMessageContent> event) {
