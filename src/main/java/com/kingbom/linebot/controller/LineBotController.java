@@ -41,9 +41,9 @@ public class LineBotController {
     }
 
     private void handleTextContent(String replyToken, Event event, TextMessageContent content) {
-        String text = content.getText();
+        String text = content.getText().toLowerCase();
         switch (text) {
-            case "Profile": {
+            case "profile": {
                 String userId = event.getSource().getUserId();
                 if(userId != null) {
                     lineMessagingClient.getProfile(userId).whenComplete((profile, throwable) -> {
