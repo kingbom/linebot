@@ -54,14 +54,12 @@ public class LineBotController {
 
     @EventMapping
     public void handleStickerMessage(MessageEvent<StickerMessageContent> event) {
-        log.info(event.toString());
         StickerMessageContent message = event.getMessage();
         reply(event.getReplyToken(), new StickerMessage(message.getPackageId(), message.getStickerId()));
     }
 
     @EventMapping
     public void handleLocationMessage(MessageEvent<LocationMessageContent> event) {
-        log.info(event.toString());
         LocationMessageContent message = event.getMessage();
         reply(event.getReplyToken(), new LocationMessage(
                 (message.getTitle() == null) ? "Location replied" : message.getTitle(),
@@ -73,10 +71,8 @@ public class LineBotController {
 
     @EventMapping
     public void handleImageMessage(MessageEvent<ImageMessageContent> event) {
-        log.info(event.toString());
         ImageMessageContent content = event.getMessage();
         String replyToken = event.getReplyToken();
-
         try {
             MessageContentResponse response = lineMessagingClient.getMessageContent(content.getId()).get();
             DownloadedContent jpg = saveContent("jpg", response);
@@ -92,7 +88,6 @@ public class LineBotController {
         }
 
     }
-
 
     private void handleTextContent(String replyToken, Event event, TextMessageContent content) {
         String text = content.getText().toLowerCase();
@@ -111,9 +106,12 @@ public class LineBotController {
                 }
                 break;
             }
-            default:
-                log.info("Return echo message %s : %s", replyToken, text);
-                this.replyText(replyToken, text);
+            case "หิว" : {
+                this.reply(replyToken, Arrays.asList(new TextMessage("กินไหนดี")));
+                break;
+            }
+
+            default: this.replyText(replyToken, text);
         }
     }
 
@@ -168,9 +166,10 @@ public class LineBotController {
 
     private String getProfileInfo(UserProfileResponse profile) {
         return new StringBuilder("")
-                .append("Display name   : $Display ".replace("$Display", profile.getDisplayName())+"\n")
-                .append("Status message : $StatusMessage ".replace("$StatusMessage", profile.getStatusMessage())+"\n")
-                .append("User ID        : $UserId".replace("$UserId", profile.getUserId())+"\n")
+                .append("PictureUrl     : $PictureUrl".replace("$PictureUrl", profile.getPictureUrl())+ "\n")
+                .append("Display name   : $Display ".replace("$Display", profile.getDisplayName()) + "\n")
+                .append("Status message : $StatusMessage ".replace("$StatusMessage", profile.getStatusMessage()) + "\n")
+                .append("User ID        : $UserId".replace("$UserId", profile.getUserId()))
                 .toString();
     }
 
