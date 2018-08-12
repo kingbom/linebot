@@ -7,10 +7,13 @@ import com.linecorp.bot.model.event.MessageEvent;
 import com.linecorp.bot.model.event.message.TextMessageContent;
 import com.linecorp.bot.model.message.Message;
 import com.linecorp.bot.model.message.TextMessage;
+
+import com.linecorp.bot.model.profile.UserProfileResponse;
 import com.linecorp.bot.spring.boot.annotation.EventMapping;
 import com.linecorp.bot.spring.boot.annotation.LineMessageHandler;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -39,24 +42,17 @@ public class LineBotController {
 
     private void handleTextContent(String replyToken, Event event, TextMessageContent content) {
         String text = content.getText();
-
-        log.info("Got text message from %s : %s", replyToken, text);
         switch (text) {
             case "Profile": {
                 String userId = event.getSource().getUserId();
                 if(userId != null) {
                     lineMessagingClient.getProfile(userId).whenComplete((profile, throwable) -> {
-
                                 if(throwable != null) {
                                     this.replyText(replyToken, throwable.getMessage());
                                     return;
                                 }
-
-                                this.reply(replyToken, Arrays.asList(
-                                        new TextMessage("Display name   : $Display ".replace("$Display", profile.getDisplayName()) ),
-                                        new TextMessage("Status message : $StatusMessage ".replace("$StatusMessage", profile.getStatusMessage()) ),
-                                        new TextMessage("User ID        : $UserId".replace("$UserId", profile.getUserId()))
-                                ));
+                                String profileInfo = getProfileInfo(profile);
+                                this.reply(replyToken, Arrays.asList(new TextMessage(profileInfo)));
                     });
                 }
                 break;
@@ -65,6 +61,14 @@ public class LineBotController {
                 log.info("Return echo message %s : %s", replyToken, text);
                 this.replyText(replyToken, text);
         }
+    }
+
+    private String getProfileInfo(UserProfileResponse profile) {
+        return new StringBuilder("")
+                .append("Display name   : $Display ".replace("$Display", profile.getDisplayName())+"\n")
+                .append("Status message : $StatusMessage ".replace("$StatusMessage", profile.getStatusMessage())+"\n")
+                .append("User ID        : $UserId".replace("$UserId", profile.getUserId())+"\n")
+                .toString();
     }
 
     private void replyText(@NonNull String replyToken, @NonNull String message) {
